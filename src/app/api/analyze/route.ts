@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { scrapeUrl, executeWireTask, extractJsonData } from "@/lib/anakin";
+import { scrapeUrl, executeWireTask, extractJsonData, SCRAPER_TIMEOUT_SENTINEL } from "@/lib/anakin";
 import { computeVerdict, ProductInfo, RetailerPrice } from "@/lib/verdict";
 import { ALL_RETAILERS, RETAILERS, detectRetailer, buildSearchUrl, RETAILER_LIST_LABEL, type Retailer } from "@/lib/retailers";
 
 export const maxDuration = 60;
 const INCLUDE_DEBUG = process.env.NODE_ENV !== "production" || process.env.DEBUG_ANALYZE === "1";
 const CACHE_TTL_MS = 10 * 60 * 1000;
-const SOURCE_TIMEOUT_MS = 25000;
+const SOURCE_TIMEOUT_MS = 20000;
 const WIRE_TIMEOUT_MS = 10000;
 const SEARCH_TIMEOUT_MS = 12000;
 
@@ -454,9 +454,12 @@ export async function POST(req: NextRequest) {
         throw err;
       }
       const sourceRaw = extractJsonData(sourceScrape);
-      debugRaw.sourceScraperRaw = sourceRaw;
+      // If the scraper timed out gracefully, treat as no result so the
+      // search-URL fallback can still run within the 60s Vercel budget.
+      const sourceScrapeTimedOut = sourceScrape === SCRAPER_TIMEOUT_SENTINEL;
+      debugRaw.sourceScraperRaw = sourceScrapeTimedOut ? "timed-out" : sourceRaw;
 
-      if (!sourceRaw) {
+      if (!sourceRaw || sourceScrapeTimedOut) {
         const searchQuery = productSearchQueryFromUrl(url);
         if (searchQuery) {
           const searchUrl = buildSearchUrl(sourceRetailer, searchQuery);

@@ -23,10 +23,18 @@ function headers() {
   };
 }
 
+// Sentinel returned when a scraper job times out gracefully — callers can
+// treat this as an empty result rather than a hard failure.
+export const SCRAPER_TIMEOUT_SENTINEL: Record<string, unknown> = { _timedOut: true };
+
 async function pollJob(
   jobId: string,
   type: "scraper" | "wire",
-  { interval = 2500, timeoutMs = 45000 }: { interval?: number; timeoutMs?: number } = {}
+  {
+    interval = 1500,
+    timeoutMs = 45000,
+    throwOnTimeout = true,
+  }: { interval?: number; timeoutMs?: number; throwOnTimeout?: boolean } = {}
 ) {
   const start = Date.now();
   const endpoint = type === "scraper" ? `url-scraper/${jobId}` : `holocron/jobs/${jobId}`;
@@ -42,6 +50,11 @@ async function pollJob(
     }
     await new Promise((r) => setTimeout(r, interval));
   }
+
+  if (!throwOnTimeout) {
+    console.warn(`Scraper job ${jobId} timed out after ${timeoutMs}ms — returning empty result.`);
+    return SCRAPER_TIMEOUT_SENTINEL;
+  }
   throw new Error(`Job timed out after ${timeoutMs}ms on ${endpoint}`);
 }
 
@@ -52,10 +65,11 @@ export async function scrapeUrl(
   url: string,
   schema?: Record<string, unknown>,
   {
-    timeoutMs = 45000,
-    interval = 2500,
+    timeoutMs = 40000,
+    interval = 1500,
     useBrowser = true,
-  }: { timeoutMs?: number; interval?: number; useBrowser?: boolean } = {}
+    throwOnTimeout = false,
+  }: { timeoutMs?: number; interval?: number; useBrowser?: boolean; throwOnTimeout?: boolean } = {}
 ): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = {
     url,
@@ -85,7 +99,7 @@ export async function scrapeUrl(
   const jobId: string = submitData.jobId || submitData.id;
   if (!jobId) throw new Error("No jobId returned from url-scraper");
 
-  return pollJob(jobId, "scraper", { interval, timeoutMs });
+  return pollJob(jobId, "scraper", { interval, timeoutMs, throwOnTimeout });
 }
 
 /**

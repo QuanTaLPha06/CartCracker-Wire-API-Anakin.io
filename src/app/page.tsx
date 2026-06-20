@@ -71,18 +71,6 @@ const LOADING_STEPS = [
   "Running the honesty check\u2026",
 ];
 
-const DEMO_URLS = [
-  {
-    label: "Ajio demo",
-    url: "https://www.ajio.com/puma-fade-pro-running-shoes/p/451021246_navybluemulti",
-    note: "Best for showing a clean live demo.",
-  },
-  {
-    label: "Amazon demo",
-    url: "https://www.amazon.in/dp/B0DJ2X2HR5",
-    note: "May be slower; good for showing fallback handling.",
-  },
-];
 
 export default function Home() {
   const [url, setUrl] = useState("");
@@ -196,20 +184,6 @@ export default function Home() {
         {urlError && <p className="mt-3 text-sm text-amber-300">{urlError}</p>}
       </form>
 
-      <div className="w-full max-w-2xl mb-12 grid grid-cols-1 sm:grid-cols-2 gap-3 fade-in-up relative z-10" style={{ animationDelay: "0.15s" }}>
-        {DEMO_URLS.map((demo) => (
-          <button
-            key={demo.label}
-            type="button"
-            onClick={() => setUrl(demo.url)}
-            className="text-left p-4 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 transition-all"
-          >
-            <div className="text-xs uppercase tracking-[0.2em] text-slate-400 mb-2">{demo.label}</div>
-            <div className="text-sm text-white font-medium mb-1">{demo.url}</div>
-            <div className="text-xs text-slate-500">{demo.note}</div>
-          </button>
-        ))}
-      </div>
 
       {/* Loading state */}
       {loading && (
