@@ -114,9 +114,26 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Something went wrong");
-      setResult(data);
+
+      // Safely parse the response — the server may return an HTML error page
+      // (e.g. Vercel 504 gateway timeout) instead of JSON, which would cause
+      // a SyntaxError if we blindly call .json().
+      const contentType = res.headers.get("content-type") ?? "";
+      let data: Record<string, unknown>;
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(
+          res.ok
+            ? "Unexpected response from server."
+            : `Server error (${res.status}). Please try again.`
+        );
+        void text; // suppress unused var warning
+      }
+
+      if (!res.ok) throw new Error((data.error as string) || "Something went wrong");
+      setResult(data as unknown as AnalysisResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
