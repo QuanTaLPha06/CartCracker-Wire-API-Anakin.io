@@ -56,7 +56,7 @@ export const RETAILERS: Record<Retailer, RetailerConfig> = {
     wire: {
       detailActionId: "act_amzn_in_product_detail_ssr",
       searchActionId: "act_amzn_in_search_results_ssr",
-      searchParamBuilder: (q) => ({ search_query: q, sort_order: "apparel" }),
+      searchParamBuilder: (q) => ({ search_query: q, sort_order: "relevanceblender" }),
     },
     // Confirmed working for SEARCH in this session. Detail action confirmed
     // BROKEN (returns stale/wrong list_price — the ₹89,990 vs ₹25,000 case)

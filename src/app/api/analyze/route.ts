@@ -137,9 +137,29 @@ function slugToQueryFromUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
     const parts = parsed.pathname.split("/").filter(Boolean);
-    const candidate = parts.find((part) => part.length > 3 && !/^p$/i.test(part) && !/^\d+$/.test(part));
-    if (!candidate) return null;
-    return decodeURIComponent(candidate.replace(/[-_]+/g, " ")).trim();
+
+    // A valid product-name slug must:
+    //  • be longer than 4 chars (filters "p", "dp", "buy", "s")
+    //  • contain at least one dash (real slugs always do; bare IDs don't)
+    //  • not be a pure-numeric ID (e.g. 16748448)
+    //  • not be a pure alphanumeric code (ASIN B0DBG12WF9, Flipkart itm…)
+    //  • not contain "=" (Amazon /ref=sr_1_24 is a path segment, not a slug)
+    const candidates = parts.filter(
+      (p) =>
+        p.length > 4 &&
+        p.includes("-") &&                 // real slugs always hyphenate words
+        !/^\d+$/.test(p) &&               // not a numeric ID
+        !/^[A-Z0-9]{6,}$/i.test(p) &&    // not an ASIN / product code
+        !p.includes("=")                  // not a ref= path segment
+    );
+
+    if (candidates.length === 0) return null;
+
+    // Prefer the LONGEST candidate — on Myntra the path is
+    // /category/brand/product-name/id/buy and the product name is always
+    // the longest slug. Taking the first would return the category instead.
+    const best = candidates.reduce((a, b) => (a.length >= b.length ? a : b));
+    return decodeURIComponent(best.replace(/[-_]+/g, " ")).trim();
   } catch {
     return null;
   }
@@ -337,7 +357,34 @@ function isBlockedPage(raw: Record<string, unknown> | null): boolean {
   if (!raw) return false;
   const title = String(raw.title || "").toLowerCase();
   const description = String(raw.description || "").toLowerCase();
-  return title.includes("access denied") || description.includes("permission to access");
+  const text = `${title} ${description}`;
+
+  // Known block / bot-detection signals across all retailers:
+  // Amazon: CAPTCHA page, "Enter the characters", "Sorry! Something went wrong"
+  // Myntra/Flipkart: rate-limit, login wall
+  // Croma: Cloudflare "Just a moment"
+  const blockedSignals = [
+    "access denied",
+    "permission to access",
+    "robot",
+    "captcha",
+    "verify you",
+    "enter the characters",
+    "sign in to continue",
+    "temporarily unavailable",
+    "too many requests",
+    "unusual traffic",
+    "just a moment",           // Cloudflare interstitial
+    "security check",
+    "something went wrong",
+  ];
+
+  if (blockedSignals.some((s) => text.includes(s))) return true;
+
+  // A page with a stub title (< 5 chars) and no description is almost certainly
+  // an empty shell / bot-wall — flag it so the search fallback kicks in.
+  const hasMinimalContent = title.length < 5 && !description;
+  return hasMinimalContent;
 }
 
 // ── Route handler ────────────────────────────────────────────────────────────
@@ -425,8 +472,11 @@ export async function POST(req: NextRequest) {
     // Ajio direct product pages are frequently blocked, so use search/results
     // first when we can infer a useful query from the URL. This avoids wasting
     // time on a page we already know is hostile to scraping.
+    // Ajio (and any retailer whose direct product pages are consistently blocked)
+    // — try a search-first path using the product-name slug from the URL.
+    // Use effectiveSourceUrl so UTM params are already stripped before slug extraction.
     if (!product && sourceRetailer === "Ajio") {
-      const slugQuery = slugToQueryFromUrl(url);
+      const slugQuery = slugToQueryFromUrl(effectiveSourceUrl) ?? slugToQueryFromUrl(url);
       if (slugQuery) {
         const fallbackSearchUrl = buildSearchUrl("Ajio", sanitizeSearchQuery(slugQuery));
         const fallbackScrape = await scrapeUrl(fallbackSearchUrl, SEARCH_RESULT_SCHEMA, {
@@ -446,6 +496,44 @@ export async function POST(req: NextRequest) {
           };
           setCache(sourceCacheKey, product);
           pathLog.source = "ajio-search-fallback";
+        }
+      }
+    }
+
+    // ── Amazon Wire Search fallback (Step 1) ─────────────────────────────
+    // Wire detail frequently returns stale/implausible price data. The URL
+    // scraper and scraper-based search both get blocked by Amazon anti-bot.
+    // Wire Search is the most reliable way to get current Amazon pricing:
+    //  • Searching by ASIN is perfectly unique — the first result IS the product.
+    //  • Searching by product name slug also works well as a secondary.
+    if (!product && sourceRetailer === "Amazon" && sourceConfig.wire?.searchActionId && sourceConfig.wireVerified) {
+      const asin = extractAmazonAsin(url);
+      const wireQuery = asin ?? slugToQueryFromUrl(url);
+      if (wireQuery && sourceConfig.wire.searchParamBuilder) {
+        try {
+          pathLog.source = "wire-search-attempt";
+          const wireRes = await executeWireTask(
+            sourceConfig.wire.searchActionId,
+            sourceConfig.wire.searchParamBuilder(wireQuery),
+            { timeoutMs: WIRE_TIMEOUT_MS }
+          );
+          const norms = normaliseWireSearch(wireRes.data as Record<string, any>);
+          const first = norms.find((n) => n.price > 0);
+          if (first) {
+            product = {
+              productName: first.product_name,
+              sourceRetailer,
+              claimedPrice: first.price,
+              claimedMrp: null,
+              claimedDiscountPercent: null,
+            };
+            setCache(sourceCacheKey, product);
+            pathLog.source = "wire-search";
+            debugRaw.sourceWireSearchRaw = wireRes.data;
+          }
+        } catch (e) {
+          console.warn("Amazon Step-1 Wire search fallback failed:", e);
+          debugRaw.sourceWireSearchError = e instanceof Error ? e.message : String(e);
         }
       }
     }
@@ -518,8 +606,15 @@ export async function POST(req: NextRequest) {
 
       const extracted = sourceRaw ? normaliseSourceData(sourceRaw) : null;
       debugRaw.sourceScraperNormalized = extracted;
+
+      // Scrape returned data but it looks like a bot-wall, login page, or is
+      // missing price — run the same search-URL fallback used for timeouts.
       if (!extracted || !extracted.product_name || extracted.current_price <= 0 || isBlockedPage(sourceRaw)) {
-        const searchQuery = productSearchQueryFromUrl(url);
+        // Bug 6 fix: try both effectiveSourceUrl AND original url for slug,
+        // since different retailers put the product name in different URL forms.
+        const searchQuery =
+          productSearchQueryFromUrl(effectiveSourceUrl) ??
+          productSearchQueryFromUrl(url);
         if (searchQuery) {
           const searchUrl = buildSearchUrl(sourceRetailer, searchQuery);
           const searchScrape = await scrapeUrl(searchUrl, SEARCH_RESULT_SCHEMA, {
