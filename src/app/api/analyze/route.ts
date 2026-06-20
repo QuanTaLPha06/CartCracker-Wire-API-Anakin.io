@@ -111,10 +111,15 @@ function canonicalizeAmazonUrl(url: string): string {
 }
 
 function sanitizeSearchQuery(productName: string): string {
-  // Split only on pipe/comma/slash — these are genuine title delimiters.
-  // Do NOT split on dash: URL slugs like "PUMA-Pro-Fade-Running-Shoes" use
-  // dashes as word separators, and splitting would give us only "PUMA".
-  let cleaned = productName.split(/[|,/]/).map(s => s.trim()).filter(Boolean)[0] ?? productName.trim();
+  // Amazon product titles use "Brand | Product Name" format. Previous logic
+  // took [0] after splitting on '|', which reduced "Puma | Fade Pro Running
+  // Shoes" to just "Puma" — making all cross-retailer searches useless.
+  // Now we JOIN pipe-separated segments with a space so the full product
+  // name is preserved as the search query.
+  const cleaned = productName
+    .replace(/[|,/]/g, " ")  // delimiters → spaces
+    .replace(/\s+/g, " ")    // collapse whitespace
+    .trim();
   const words = cleaned.split(/\s+/).filter((w) => w.length > 0);
   if (words.length > 8) return words.slice(0, 8).join(" ");
   return cleaned;
@@ -614,7 +619,11 @@ export async function POST(req: NextRequest) {
 
       // Scrape returned data but it looks like a bot-wall, login page, or is
       // missing price — run the same search-URL fallback used for timeouts.
-      if (!extracted || !extracted.product_name || extracted.current_price <= 0 || isBlockedPage(sourceRaw)) {
+      // Guard with !product: if the first fallback (timed-out block above)
+      // already found a product, skip this second scrape to avoid wasting
+      // ~14s on a redundant call (the SCRAPER_TIMEOUT_SENTINEL + fallback-1
+      // success path hits this block because extracted is always null).
+      if (!product && (!extracted || !extracted.product_name || extracted.current_price <= 0 || isBlockedPage(sourceRaw))) {
         // Bug 6 fix: try both effectiveSourceUrl AND original url for slug,
         // since different retailers put the product name in different URL forms.
         const searchQuery =

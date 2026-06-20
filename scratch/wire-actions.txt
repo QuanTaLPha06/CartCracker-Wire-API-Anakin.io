@@ -1,0 +1,455 @@
+
+======================================
+✅ MATCH: Slug: amzn-in, Name: Amazon India, Action Count: 13
+======================================
+Actions:
+  * ID: 45d94cee-fb7b-40c9-8a91-431a63120f33
+    Name: Buyback Offers
+    Desc: Returns buyback and trade-in offers for a product with exchange values.
+    Params: [
+  {
+    "name": "asin",
+    "type": "string",
+    "default": "B0CY2R1G3G",
+    "required": true,
+    "description": "Product ASIN to fetch buyback/trade-in offer tiers for"
+  },
+  {
+    "name": "encrypted_merchant_id",
+    "type": "string",
+    "default": "AJ6SIZC8YQDZX",
+    "required": true,
+    "description": "Encrypted merchant identifier for the product listing on Amazon.in"
+  },
+  {
+    "name": "product_subcategory",
+    "type": "string",
+    "default": "14700226",
+    "required": false,
+    "description": "Buyback product subcategory code used in the offers-for-category query"
+  },
+  {
+    "name": "brand",
+    "type": "string",
+    "default": "HP",
+    "required": false,
+    "description": "Product brand name sent in the buyback offers query"
+  },
+  {
+    "name": "rbn_hierarchy_nodes",
+    "type": "string",
+    "default": "14700226",
+    "required": false,
+    "description": "Retail browse node hierarchy identifier for buyback category matching"
+  },
+  {
+    "name": "product_price",
+    "type": "string",
+    "default": "54990",
+    "required": false,
+    "description": "Product price in INR used to calculate buyback offer tiers"
+  }
+]
+
+  * ID: 90fa8872-2845-41d8-b439-0de67bb261b9
+    Name: Category Browse Listing
+    Desc: Returns products in a category with titles, INR prices, images, and ratings.
+    Params: [
+  {
+    "name": "category_node_id",
+    "type": "string",
+    "default": "1375424031",
+    "required": true,
+    "description": "Amazon browse node ID for the category listing to fetch (e.g. Laptops department)"
+  }
+]
+
+  * ID: c1915b4d-5e99-4626-a6ff-5f11924c8196
+    Name: EMI Plans
+    Desc: Returns EMI financing plans by bank with tenures, monthly amounts, and rates.
+    Params: [
+  {
+    "name": "asin",
+    "type": "string",
+    "default": "B0CY2R1G3G",
+    "required": true,
+    "description": "Product ASIN to fetch EMI and no-cost EMI financing options for"
+  }
+]
+
+  * ID: 8a4e734e-8e0f-442b-8030-a3aa6745e47b
+    Name: Homepage Gateway
+    Desc: Returns homepage content including recommendation widgets, deals, and navigation.
+    Params: []
+
+  * ID: 123a365c-9359-4989-8408-2fdf511c8f37
+    Name: Live Broadcast
+    Desc: Returns live-shopping broadcast details with featured product segments and ASINs.
+    Params: [
+  {
+    "name": "broadcast_id",
+    "type": "string",
+    "default": "6b4a8188-b8e7-452f-9849-4decfe82fdc2",
+    "required": false,
+    "description": "Amazon Live broadcast UUID to fetch product segments and stream metadata for"
+  }
+]
+
+  * ID: 04dc7d01-b8ec-4880-a442-cfa576720d6e
+    Name: Merchandised Category Listing
+    Desc: Returns merchandised category tiles and product links for a browse node.
+    Params: [
+  {
+    "name": "category_node_id",
+    "type": "string",
+    "default": "29887845031",
+    "required": true,
+    "description": "Amazon browse node ID for the category listing to fetch"
+  }
+]
+
+  * ID: c6860f68-c44b-4e7a-b4ba-2d54ab4d96e2
+    Name: Navigation Menu
+    Desc: Returns the top-level navigation menu with departments and category links.
+    Params: []
+
+  * ID: 18439f91-e8a4-414f-9712-d92c8d25b827
+    Name: Navigation Subcategories
+    Desc: Returns subcategory menu items with titles, node IDs, and links.
+    Params: []
+
+  * ID: e1360267-6e2b-48f2-b6b2-b633ac681e44
+    Name: Product Collection
+    Desc: Returns titles, prices, and availability for a batch of product ASINs.
+    Params: [
+  {
+    "name": "asins",
+    "type": "string",
+    "default": "B0F44L54CM,B0F89JDLB3,B09NP47KT4",
+    "required": true,
+    "description": "Comma-separated Amazon product ASINs to fetch in a single batch request"
+  }
+]
+
+  * ID: caf4cece-ccac-4c3e-9184-cad245ade14b
+    Name: Product Details
+    Desc: Returns product details for an ASIN: name, brand, price, images, and rating.
+    Params: [
+  {
+    "name": "asin",
+    "type": "string",
+    "default": "B0CY2R1G3G",
+    "required": true,
+    "description": "Amazon Standard Identification Number (ASIN) of the product to load"
+  }
+]
+
+  * ID: a0bfbcc8-58c7-41b8-b09f-d8df4ba4b59b
+    Name: Related Products
+    Desc: Returns related and similar products for a product with titles, prices, and images.
+    Params: [
+  {
+    "name": "encrypted_lazy_load_request",
+    "type": "string",
+    "default": "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",
+    "required": true,
+    "description": "Encrypted lazy-load render token from the PDP related-products widget"
+  }
+]
+
+  * ID: a71dadee-6336-4a4a-98fc-96571fbc6ed5
+    Name: Search Results
+    Desc: Returns search results for a query with titles, INR prices, images, and ratings.
+    Params: [
+  {
+    "name": "search_query",
+    "type": "string",
+    "default": "laptop",
+    "required": true,
+    "description": "Search keyword query (maps to the k= parameter on Amazon.in search)"
+  },
+  {
+    "name": "rh_filter",
+    "type": "string",
+    "default": "n:1571271031,n:214332266031,n:1968024031",
+    "required": false,
+    "description": "Amazon rh refinement filter string narrowing results to category nodes"
+  },
+  {
+    "name": "sort_order",
+    "type": "string",
+    "default": "apparel",
+    "required": false,
+    "description": "Sort order key for search results (e.g. apparel, price-asc-rank)"
+  }
+]
+
+  * ID: ee87269a-8a06-4465-a617-8acaaf963a1d
+    Name: Variant Pricing
+    Desc: Returns per-variant prices, savings, and availability for a product's variants.
+    Params: [
+  {
+    "name": "asin_list",
+    "type": "string",
+    "default": "B0F5WDDGQK,B0F5WKTV36,B0F5WDCNNK,B0F5WFSLX6,B0F5WF6WH6,B0F5WDYZMD,B0F5WJM4QH,B0F5WF5ZBW",
+    "required": true,
+    "description": "Comma-separated list of variant ASINs in the twister matrix"
+  },
+  {
+    "name": "parent_asin",
+    "type": "string",
+    "default": "B0F66BQ6BP",
+    "required": true,
+    "description": "Parent ASIN grouping all color/size variants"
+  },
+  {
+    "name": "landing_asin",
+    "type": "string",
+    "default": "B0F5WDCNNK",
+    "required": true,
+    "description": "Currently selected variant ASIN shown on the product page"
+  },
+  {
+    "name": "qid",
+    "type": "string",
+    "default": "1780330011",
+    "required": false,
+    "description": "Search query ID extracted from prior search results page for twister context"
+  }
+]
+
+
+======================================
+✅ MATCH: Slug: flipkart, Name: Flipkart, Action Count: 5
+======================================
+Actions:
+  * ID: 756c753b-224c-4280-b5e2-8a9a2d666e99
+    Name: Add to Cart
+    Desc: Adds a product to the authenticated user's cart and returns the updated cart.
+    Params: [
+  {
+    "name": "product_id",
+    "type": "string",
+    "required": true,
+    "description": "Flipkart product ID, e.g. MOBHFSCEW8DQVKDZ"
+  },
+  {
+    "name": "listing_id",
+    "type": "string",
+    "required": true,
+    "description": "Flipkart listing ID, e.g. LSTMOBHFSCEW8DQVKDZ2CWXCB"
+  },
+  {
+    "name": "quantity",
+    "type": "string",
+    "required": false,
+    "description": "Quantity to add"
+  },
+  {
+    "name": "price",
+    "type": "string",
+    "required": false,
+    "description": "Product price for payload (optional)"
+  }
+]
+
+  * ID: 7792288b-be7d-41c4-a102-698e77f6503d
+    Name: Cart Contents
+    Desc: Returns the authenticated user's cart with items, quantities, prices, and totals.
+    Params: [
+  {
+    "name": "pincode",
+    "type": "string",
+    "required": false,
+    "description": "Delivery pincode"
+  }
+]
+
+  * ID: 3831641d-58ee-43d5-bf8e-27f13886db28
+    Name: Flipkart Get Product
+    Desc: Fetches a Flipkart product page and returns structured data: title, MRP, description, product highlights, and full specifications. Pass any flipkart.com /p/ URL.
+    Params: [
+  {
+    "name": "product_url",
+    "type": "string",
+    "default": "https://www.flipkart.com/maybelline-new-york-call-me-colossal-bold-eye-kit/p/itme0d5a653ce45c",
+    "required": true,
+    "description": "Full Flipkart product page URL (must contain flipkart.com)"
+  }
+]
+
+  * ID: 8c3f1e7c-b5de-44e4-a05a-8cca6bf3f32d
+    Name: Product Details
+    Desc: Returns full product data including specifications, pricing, and images.
+    Params: [
+  {
+    "name": "product_url",
+    "type": "string",
+    "default": "https://www.flipkart.com/apple-iphone-15-black-128-gb/p/itm6ac6485515ae4?pid=MOBGTAGPTB3VS24W&lid=LSTMOBGTAGPTB3VS24WCTBCFM",
+    "required": true,
+    "description": "Full Flipkart product URL with pid param"
+  },
+  {
+    "name": "pincode",
+    "type": "string",
+    "required": false,
+    "description": "Delivery pincode"
+  }
+]
+
+  * ID: 0e12eaf5-5a4a-4c99-aaa6-b978bcb82a5e
+    Name: Product Search
+    Desc: Returns products matching a query with titles, prices, ratings, and review counts.
+    Params: [
+  {
+    "name": "query",
+    "type": "string",
+    "default": "iphone",
+    "required": true,
+    "description": "Search keyword, e.g. iphone 15, oneplus"
+  },
+  {
+    "name": "pincode",
+    "type": "string",
+    "required": false,
+    "description": "Delivery pincode"
+  }
+]
+
+
+======================================
+✅ MATCH: Slug: croma, Name: Croma, Action Count: 7
+======================================
+Actions:
+  * ID: 836f567f-8c72-43a0-821c-900fb09bb8cf
+    Name: Add to Cart
+    Desc: Adds a product to the authenticated user's cart and returns cart update status.
+    Params: [
+  {
+    "name": "product_code",
+    "type": "string",
+    "required": true,
+    "description": "Croma product code, e.g. 317428"
+  },
+  {
+    "name": "quantity",
+    "type": "string",
+    "required": false,
+    "description": "Quantity to add"
+  },
+  {
+    "name": "pincode",
+    "type": "string",
+    "required": false,
+    "description": "Delivery pincode"
+  }
+]
+
+  * ID: 3f15610f-0e0a-450c-b31a-c25eadf70653
+    Name: Bank Offers
+    Desc: Returns applicable bank offers, cashback deals, and payment promotions for a product.
+    Params: [
+  {
+    "name": "product_id",
+    "type": "string",
+    "default": "301171",
+    "required": true,
+    "description": "Croma product/item ID (numeric), e.g. 319449"
+  }
+]
+
+  * ID: d9ea6b14-79fa-441d-bbc3-c902dca53404
+    Name: No Cost EMI
+    Desc: Returns EMI plans including no-cost EMI options from multiple banks for a product at a given price.
+    Params: [
+  {
+    "name": "product_id",
+    "type": "string",
+    "default": "301171",
+    "required": true,
+    "description": "Croma product ID, e.g. 319449"
+  },
+  {
+    "name": "amount_in_paisa",
+    "type": "string",
+    "default": "4299900",
+    "required": true,
+    "description": "Product price in paisa, e.g. 7299900 for Rs 72,999"
+  }
+]
+
+  * ID: a4d094f3-8efd-4e2f-a39f-8fea6cf03851
+    Name: Product Details
+    Desc: Returns full product information including name, brand, MRP, selling price, specs, images, and categories.
+    Params: [
+  {
+    "name": "product_url",
+    "type": "string",
+    "default": "https://www.croma.com/apple-iphone-15-128gb-black/p/301171",
+    "required": true,
+    "description": "Full Croma product URL, e.g. https://www.croma.com/apple-iphone-16-128-gb-black/p/309752"
+  },
+  {
+    "name": "pincode",
+    "type": "string",
+    "required": false,
+    "description": "Delivery pincode"
+  }
+]
+
+  * ID: cde9c626-a54a-4bb1-9856-a5d9af7b854a
+    Name: Search Products
+    Desc: Returns product listings with name, brand, price, rating, stock status, and pagination for a query.
+    Params: [
+  {
+    "name": "query",
+    "type": "string",
+    "default": "iphone",
+    "required": true,
+    "description": "Search keyword, e.g. iphone, laptop, washing machine"
+  },
+  {
+    "name": "page",
+    "type": "string",
+    "required": false,
+    "description": "Page number, 0-indexed"
+  },
+  {
+    "name": "sort",
+    "type": "string",
+    "required": false,
+    "description": "Sort: relevance, price-asc, price-desc, rating-desc, latest"
+  },
+  {
+    "name": "pincode",
+    "type": "string",
+    "required": false,
+    "description": "Delivery pincode for availability"
+  }
+]
+
+  * ID: e6293d8d-0633-4f40-b802-9e8c498f7184
+    Name: Stock Check
+    Desc: Returns inventory availability, delivery options, and fulfillment details for a product at a pincode.
+    Params: [
+  {
+    "name": "product_id",
+    "type": "string",
+    "default": "301171",
+    "required": true,
+    "description": "Croma product ID, e.g. 319449"
+  },
+  {
+    "name": "pincode",
+    "type": "string",
+    "default": "400049",
+    "required": true,
+    "description": "Delivery pincode, e.g. 400049"
+  }
+]
+
+  * ID: af1f5e2f-038c-46ad-9908-fc29d135b7b6
+    Name: View Cart
+    Desc: Returns the authenticated user's current cart with items, quantities, prices, and totals.
+    Params: []
+
