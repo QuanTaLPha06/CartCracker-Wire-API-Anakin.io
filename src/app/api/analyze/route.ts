@@ -95,11 +95,26 @@ function extractAmazonAsin(url: string): string | null {
   return match ? match[1] : null;
 }
 
-// Trim titles down to the first meaningful chunk (before any pipe/dash delimiter)
-// and cap at a reasonable length so search URLs stay focused without losing key
-// model/brand words that help the retailer search engine find the right item.
+/**
+ * Reduce an Amazon URL to its canonical /dp/ASIN form.
+ * Amazon search-referral URLs contain dozens of tracking params (dib, pd_rd_*,
+ * refinements, etc.) that make the page look like a bot-referred search hit,
+ * increasing the chance the scraper gets served a CAPTCHA or redirect.
+ * A bare /dp/ASIN URL is indistinguishable from a direct product link.
+ */
+function canonicalizeAmazonUrl(url: string): string {
+  const asin = extractAmazonAsin(url);
+  if (!asin) return url;
+  // Use amazon.in as the canonical domain for India-focused scraping.
+  const domain = url.toLowerCase().includes("amazon.in") ? "www.amazon.in" : "www.amazon.com";
+  return `https://${domain}/dp/${asin}`;
+}
+
 function sanitizeSearchQuery(productName: string): string {
-  let cleaned = productName.split(/[|\-,/]/)[0].trim();
+  // Split only on pipe/comma/slash — these are genuine title delimiters.
+  // Do NOT split on dash: URL slugs like "PUMA-Pro-Fade-Running-Shoes" use
+  // dashes as word separators, and splitting would give us only "PUMA".
+  let cleaned = productName.split(/[|,/]/).map(s => s.trim()).filter(Boolean)[0] ?? productName.trim();
   const words = cleaned.split(/\s+/).filter((w) => w.length > 0);
   if (words.length > 8) return words.slice(0, 8).join(" ");
   return cleaned;
@@ -349,7 +364,12 @@ export async function POST(req: NextRequest) {
 
     // ── Step 1: Extract product data from source page ────────────────────
     const normalizedUrl = normalizeUrl(url);
-    const sourceCacheKey = `source:${normalizedUrl}`;
+    // For Amazon, always work with the canonical /dp/ASIN URL to avoid
+    // bot-detection from search-referral tracking params.
+    const effectiveSourceUrl = sourceRetailer === "Amazon"
+      ? canonicalizeAmazonUrl(normalizedUrl)
+      : normalizedUrl;
+    const sourceCacheKey = `source:${effectiveSourceUrl}`;
     const cachedSource = getCache<ProductInfo>(sourceCacheKey);
     let product: ProductInfo | null = cachedSource;
     const sourceConfig = RETAILERS[sourceRetailer];
@@ -365,11 +385,11 @@ export async function POST(req: NextRequest) {
       try {
         let wireParams: Record<string, unknown>;
         if (sourceRetailer === "Amazon") {
-          const asin = extractAmazonAsin(url);
+          const asin = extractAmazonAsin(effectiveSourceUrl);
           if (!asin) throw new Error("Could not extract ASIN from URL");
           wireParams = { asin };
         } else {
-          wireParams = { product_url: url };
+          wireParams = { product_url: effectiveSourceUrl };
         }
 
         const wireRes = await executeWireTask(sourceConfig.wire.detailActionId, wireParams, {
@@ -436,7 +456,7 @@ export async function POST(req: NextRequest) {
     if (!product) {
       let sourceScrape: Record<string, unknown>;
       try {
-        sourceScrape = await scrapeUrl(url, SOURCE_SCHEMA, {
+        sourceScrape = await scrapeUrl(effectiveSourceUrl, SOURCE_SCHEMA, {
           timeoutMs: SOURCE_TIMEOUT_MS,
           useBrowser: sourceRetailer !== "Amazon",
         });
@@ -460,7 +480,10 @@ export async function POST(req: NextRequest) {
       debugRaw.sourceScraperRaw = sourceScrapeTimedOut ? "timed-out" : sourceRaw;
 
       if (!sourceRaw || sourceScrapeTimedOut) {
-        const searchQuery = productSearchQueryFromUrl(url);
+        // Try to derive a search query from the URL itself — e.g., the slug
+        // segment "PUMA-Pro-Fade-Running-Shoes" in Amazon search-result links.
+        const searchQuery = productSearchQueryFromUrl(effectiveSourceUrl)
+          ?? productSearchQueryFromUrl(url);
         if (searchQuery) {
           const searchUrl = buildSearchUrl(sourceRetailer, searchQuery);
           const searchScrape = await scrapeUrl(searchUrl, SEARCH_RESULT_SCHEMA, {
