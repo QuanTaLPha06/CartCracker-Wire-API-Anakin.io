@@ -6,9 +6,9 @@ import { ALL_RETAILERS, RETAILERS, detectRetailer, buildSearchUrl, RETAILER_LIST
 export const maxDuration = 60;
 const INCLUDE_DEBUG = process.env.NODE_ENV !== "production" || process.env.DEBUG_ANALYZE === "1";
 const CACHE_TTL_MS = 10 * 60 * 1000;
-const SOURCE_TIMEOUT_MS = 20000;
-const WIRE_TIMEOUT_MS = 10000;
-const SEARCH_TIMEOUT_MS = 12000;
+const SOURCE_TIMEOUT_MS = 14000;   // URL scraper budget (non-Amazon only)
+const WIRE_TIMEOUT_MS = 8000;      // per-Wire call; Amazon runs two in parallel so still ≤8s total
+const SEARCH_TIMEOUT_MS = 10000;   // Step 2 search budget per retailer
 
 type CacheEntry<T> = { value: T; expiresAt: number };
 const analysisCache = new Map<string, CacheEntry<unknown>>();
@@ -428,53 +428,89 @@ export async function POST(req: NextRequest) {
     // the plausibility gate below regardless — wireVerified controls whether
     // we try Wire at all, isPlausible() controls whether we trust what it
     // gives back.
-    if (sourceConfig.wire?.detailActionId && sourceConfig.wireVerified) {
-      try {
-        let wireParams: Record<string, unknown>;
-        if (sourceRetailer === "Amazon") {
-          const asin = extractAmazonAsin(effectiveSourceUrl);
-          if (!asin) throw new Error("Could not extract ASIN from URL");
-          wireParams = { asin };
-        } else {
-          wireParams = { product_url: effectiveSourceUrl };
-        }
+    // ── Wire extraction ───────────────────────────────────────────────────
+    // Amazon: run Wire detail AND Wire search concurrently so both finish in
+    // ≤WIRE_TIMEOUT_MS (8s) instead of up to 16s sequentially. The URL scraper
+    // is skipped entirely for Amazon because it's always bot-blocked.
+    // Non-Amazon: sequential Wire detail only (search covered in Step 2).
+    if (!product && sourceConfig.wire?.detailActionId && sourceConfig.wireVerified) {
+      if (sourceRetailer === "Amazon") {
+        const asin = extractAmazonAsin(effectiveSourceUrl);
+        if (asin) {
+          // Wire detail: looks up product by ASIN.
+          const detailP = executeWireTask(sourceConfig.wire.detailActionId, { asin }, {
+            timeoutMs: WIRE_TIMEOUT_MS,
+          }).then((r) => {
+            const n = normaliseWireDetails(r.data as Record<string, any>);
+            return n && isPlausible(n) ? n : null;
+          }).catch(() => null);
 
-        const wireRes = await executeWireTask(sourceConfig.wire.detailActionId, wireParams, {
-          timeoutMs: WIRE_TIMEOUT_MS,
-        });
-        debugRaw.sourceWireRaw = wireRes.data;
-        const norm = normaliseWireDetails(wireRes.data as Record<string, any>);
-        debugRaw.sourceWireNormalized = norm;
+          // Wire search: ASIN is unique — first result is always the right product.
+          const searchP = (sourceConfig.wire.searchActionId && sourceConfig.wire.searchParamBuilder)
+            ? executeWireTask(
+                sourceConfig.wire.searchActionId,
+                sourceConfig.wire.searchParamBuilder(asin),
+                { timeoutMs: WIRE_TIMEOUT_MS }
+              ).then((r) => {
+                const items = normaliseWireSearch(r.data as Record<string, any>);
+                const hit = items.find((n) => n.price > 0);
+                return hit
+                  ? { product_name: hit.product_name, current_price: hit.price, mrp: 0, discount_percent: 0 }
+                  : null;
+              }).catch(() => null)
+            : Promise.resolve(null);
 
-        if (norm && isPlausible(norm)) {
-          product = {
-            productName: norm.product_name,
-            sourceRetailer,
-            claimedPrice: norm.current_price,
-            claimedMrp: norm.mrp > 0 ? norm.mrp : null,
-            claimedDiscountPercent: norm.discount_percent > 0 ? norm.discount_percent : null,
-          };
-          setCache(sourceCacheKey, product);
-          pathLog.source = "wire";
-        } else if (norm) {
-          const discount = norm.mrp > 0 ? Math.round(((norm.mrp - norm.current_price) / norm.mrp) * 100) : 0;
-          console.warn(
-            `${sourceRetailer} Wire returned implausible data (${discount}% off). Falling back to URL Scraper.`
-          );
-          debugRaw.sourceWireRejectedReason = `implausible: ${discount}% off`;
+          const [detailNorm, searchNorm] = await Promise.all([detailP, searchP]);
+          debugRaw.sourceWireParallel = { detail: detailNorm, search: searchNorm };
+
+          // Prefer detail (already passed isPlausible gate); fall back to search.
+          const norm = detailNorm ?? searchNorm;
+          if (norm && norm.current_price > 0) {
+            product = {
+              productName: norm.product_name,
+              sourceRetailer,
+              claimedPrice: norm.current_price,
+              claimedMrp: norm.mrp > 0 ? norm.mrp : null,
+              claimedDiscountPercent: norm.discount_percent > 0 ? norm.discount_percent : null,
+            };
+            setCache(sourceCacheKey, product);
+            pathLog.source = detailNorm ? "wire-detail" : "wire-search";
+          }
         }
-      } catch (e) {
-        console.warn(`${sourceRetailer} Wire details failed, falling back to scraper:`, e);
-        debugRaw.sourceWireError = e instanceof Error ? e.message : String(e);
+      } else {
+        // Non-Amazon: sequential Wire detail only.
+        try {
+          const wireParams = { product_url: effectiveSourceUrl };
+          const wireRes = await executeWireTask(sourceConfig.wire.detailActionId, wireParams, {
+            timeoutMs: WIRE_TIMEOUT_MS,
+          });
+          debugRaw.sourceWireRaw = wireRes.data;
+          const norm = normaliseWireDetails(wireRes.data as Record<string, any>);
+          debugRaw.sourceWireNormalized = norm;
+
+          if (norm && isPlausible(norm)) {
+            product = {
+              productName: norm.product_name,
+              sourceRetailer,
+              claimedPrice: norm.current_price,
+              claimedMrp: norm.mrp > 0 ? norm.mrp : null,
+              claimedDiscountPercent: norm.discount_percent > 0 ? norm.discount_percent : null,
+            };
+            setCache(sourceCacheKey, product);
+            pathLog.source = "wire";
+          } else if (norm) {
+            const discount = norm.mrp > 0 ? Math.round(((norm.mrp - norm.current_price) / norm.mrp) * 100) : 0;
+            console.warn(`${sourceRetailer} Wire returned implausible data (${discount}% off). Falling back to URL Scraper.`);
+            debugRaw.sourceWireRejectedReason = `implausible: ${discount}% off`;
+          }
+        } catch (e) {
+          console.warn(`${sourceRetailer} Wire details failed, falling back to scraper:`, e);
+          debugRaw.sourceWireError = e instanceof Error ? e.message : String(e);
+        }
       }
     }
 
-    // Ajio direct product pages are frequently blocked, so use search/results
-    // first when we can infer a useful query from the URL. This avoids wasting
-    // time on a page we already know is hostile to scraping.
-    // Ajio (and any retailer whose direct product pages are consistently blocked)
-    // — try a search-first path using the product-name slug from the URL.
-    // Use effectiveSourceUrl so UTM params are already stripped before slug extraction.
+    // Ajio: direct product pages are consistently blocked — search-first fallback.
     if (!product && sourceRetailer === "Ajio") {
       const slugQuery = slugToQueryFromUrl(effectiveSourceUrl) ?? slugToQueryFromUrl(url);
       if (slugQuery) {
@@ -500,54 +536,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Amazon Wire Search fallback (Step 1) ─────────────────────────────
-    // Wire detail frequently returns stale/implausible price data. The URL
-    // scraper and scraper-based search both get blocked by Amazon anti-bot.
-    // Wire Search is the most reliable way to get current Amazon pricing:
-    //  • Searching by ASIN is perfectly unique — the first result IS the product.
-    //  • Searching by product name slug also works well as a secondary.
-    if (!product && sourceRetailer === "Amazon" && sourceConfig.wire?.searchActionId && sourceConfig.wireVerified) {
-      const asin = extractAmazonAsin(url);
-      const wireQuery = asin ?? slugToQueryFromUrl(url);
-      if (wireQuery && sourceConfig.wire.searchParamBuilder) {
-        try {
-          pathLog.source = "wire-search-attempt";
-          const wireRes = await executeWireTask(
-            sourceConfig.wire.searchActionId,
-            sourceConfig.wire.searchParamBuilder(wireQuery),
-            { timeoutMs: WIRE_TIMEOUT_MS }
-          );
-          const norms = normaliseWireSearch(wireRes.data as Record<string, any>);
-          const first = norms.find((n) => n.price > 0);
-          if (first) {
-            product = {
-              productName: first.product_name,
-              sourceRetailer,
-              claimedPrice: first.price,
-              claimedMrp: null,
-              claimedDiscountPercent: null,
-            };
-            setCache(sourceCacheKey, product);
-            pathLog.source = "wire-search";
-            debugRaw.sourceWireSearchRaw = wireRes.data;
-          }
-        } catch (e) {
-          console.warn("Amazon Step-1 Wire search fallback failed:", e);
-          debugRaw.sourceWireSearchError = e instanceof Error ? e.message : String(e);
-        }
-      }
-    }
-
     // URL Scraper fallback — also the only extraction path for retailers
     // with no Wire detail action configured (Myntra, Croma), and the backup
     // path when retailer-specific rescue logic doesn't resolve the product.
     if (!product) {
       let sourceScrape: Record<string, unknown>;
       try {
-        sourceScrape = await scrapeUrl(effectiveSourceUrl, SOURCE_SCHEMA, {
-          timeoutMs: SOURCE_TIMEOUT_MS,
-          useBrowser: sourceRetailer !== "Amazon",
-        });
+        if (sourceRetailer === "Amazon") {
+          // Amazon direct pages are always bot-blocked. Assigning the timeout
+          // sentinel skips the 14s URL scraper wait and immediately triggers
+          // the search fallback below — saving the majority of our time budget.
+          sourceScrape = SCRAPER_TIMEOUT_SENTINEL;
+        } else {
+          sourceScrape = await scrapeUrl(effectiveSourceUrl, SOURCE_SCHEMA, {
+            timeoutMs: SOURCE_TIMEOUT_MS,
+            useBrowser: true,
+          });
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (message === "ANAKIN_INSUFFICIENT_CREDITS") {
